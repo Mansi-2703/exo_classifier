@@ -21,7 +21,7 @@ def engineer_features(df):
 
 # --- 3. Load the Trained Model and Define Paths ---
 MODEL_PATH = 'models/random_forest_model.pkl'
-SAMPLE_DATA_PATH = os.path.join('data', 'final_dataset_exoplanet.csv')
+SAMPLE_DATA_PATH = os.path.join('data', 'final_dataset.csv')
 model = None
 REQUIRED_FEATURES_BEFORE_SELECTION = []
 
