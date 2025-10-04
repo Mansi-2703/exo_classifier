@@ -176,31 +176,72 @@ def view_sample_data():
 
 @app.route('/heatmap_data', methods=['POST'])
 def get_heatmap_data():
-    """Generate heatmap data for temperature-insolation visualization"""
+    """Generate proper KDE heatmap data server-side"""
     if model is None: 
         return jsonify({"error": "Model is not loaded."}), 500
     
     try:
+        from scipy.stats import gaussian_kde
+        
         data = request.get_json()
         predictions = data.get('predictions', [])
+        df = pd.DataFrame(predictions)
         
-        # Extract temperature and insolation data, filtering out invalid values
-        valid_data = []
-        for p in predictions:
-            temp = p.get('equilibrium_temperature_k', 0)
-            flux = p.get('insolation_flux_earth_flux', 0)
-            if temp > 0 and flux > 0:  # Only valid positive values
-                valid_data.append({
-                    'temp': temp,
-                    'flux': flux,
-                    'habitable': p.get('habitable', 0),
-                    'disposition': p.get('disposition', 0)
-                })
+        # Clean & prepare data
+        df = df[(df['equilibrium_temperature_k'].notna()) & 
+                (df['insolation_flux_earth_flux'].notna())]
         
-        if not valid_data:
+        if len(df) == 0:
             return jsonify({"error": "No valid temperature/flux data found"}), 400
         
-        return jsonify({'data': valid_data})
+        x = df['equilibrium_temperature_k'].values
+        y = df['insolation_flux_earth_flux'].values
+        
+        # Mock habitability probability (same formula as new_code.py)
+        probability = np.exp(-((x - 288) ** 2)/(2*50**2)) * np.exp(-((y - 1)**2)/(2*0.5**2))
+        
+        # Normalize probability
+        if probability.max() > 0:
+            probability = probability / probability.max()
+        
+        # Define tight zoom grid (Earth-like range: 150–450K and 0–5 Earth Flux)
+        x_min, x_max = 150, 450
+        y_min, y_max = 0, 5
+        
+        x_lin = np.linspace(x_min, x_max, 400)
+        y_lin = np.linspace(y_min, y_max, 400)
+        X, Y = np.meshgrid(x_lin, y_lin)
+        grid_coords = np.vstack([X.ravel(), Y.ravel()])
+        
+        # Smooth KDE
+        xy = np.vstack([x, y])
+        kde = gaussian_kde(xy, weights=probability, bw_method=0.1)
+        Z = kde(grid_coords).reshape(X.shape)
+        
+        # Create Plotly heatmap figure
+        fig = go.Figure(go.Heatmap(
+            x=x_lin.tolist(),
+            y=y_lin.tolist(),
+            z=Z.tolist(),
+            colorscale='Turbo',
+            colorbar=dict(title="Habitability<br>Probability"),
+            zsmooth="best"
+        ))
+        
+        fig.update_layout(
+            title="Temperature–Insolation Habitability Heatmap",
+            xaxis_title="Equilibrium Temperature (K)",
+            yaxis_title="Insolation Flux (Earth Flux)",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#e0e0e0', family='Space Grotesk'),
+            xaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
+            yaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
+            autosize=True,
+            height=600
+        )
+        
+        return jsonify(json.loads(fig.to_json()))
     except Exception as e:
         return jsonify({"error": f"Heatmap generation error: {str(e)}"}), 500
 

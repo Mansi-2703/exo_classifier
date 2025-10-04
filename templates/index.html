@@ -336,7 +336,7 @@
             Plotly.newPlot('goldilocks-plot', [t1, t2, t3], layout, { responsive: true });
         }
         
-        // Temperature-Insolation Heatmap
+       // Temperature-Insolation Heatmap (Proper KDE Heatmap)
         async function renderHeatmapPlot(data) {
             try {
                 const response = await fetch(`${API_URL}/heatmap_data`, {
@@ -344,107 +344,26 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({predictions: data})
                 });
-                const result = await response.json();
+                const plotData = await response.json();
                 
-                if (!result.data || result.data.length === 0) {
-                    console.error('No heatmap data available');
-                    return;
+                if (plotData.error) {
+                    throw new Error(plotData.error);
                 }
                 
-                // Separate by category
-                const habitable = result.data.filter(d => d.habitable === 1);
-                const candidate = result.data.filter(d => d.disposition === 1 && d.habitable === 0);
-                const others = result.data.filter(d => d.disposition === 0);
+                // Ensure proper sizing
+                const container = document.getElementById('heatmap-plot');
+                const width = container.clientWidth;
                 
-                const traces = [];
+                plotData.layout.width = width;
+                plotData.layout.autosize = true;
                 
-                // Habitable planets
-                if (habitable.length > 0) {
-                    traces.push({
-                        x: habitable.map(d => d.temp),
-                        y: habitable.map(d => d.flux),
-                        mode: 'markers',
-                        name: 'Habitable',
-                        marker: {
-                            color: '#22c55e',
-                            size: 10,
-                            opacity: 0.8,
-                            line: {width: 1, color: 'white'}
-                        }
-                    });
-                }
-                
-                // Candidate planets
-                if (candidate.length > 0) {
-                    traces.push({
-                        x: candidate.map(d => d.temp),
-                        y: candidate.map(d => d.flux),
-                        mode: 'markers',
-                        name: 'Candidate (Not Habitable)',
-                        marker: {
-                            color: '#eab308',
-                            size: 7,
-                            opacity: 0.6
-                        }
-                    });
-                }
-                
-                // Other planets
-                if (others.length > 0) {
-                    traces.push({
-                        x: others.map(d => d.temp),
-                        y: others.map(d => d.flux),
-                        mode: 'markers',
-                        name: 'Not a Candidate',
-                        marker: {
-                            color: '#ef4444',
-                            size: 4,
-                            opacity: 0.4
-                        }
-                    });
-                }
-                
-                const layout = {
-                    ...plotlyLayoutConfig,
-                    title: {...plotlyLayoutConfig.title, text: 'Temperature-Insolation Habitability Map'},
-                    xaxis: {
-                        ...plotlyLayoutConfig.xaxis, 
-                        title: 'Equilibrium Temperature (K)',
-                        type: 'log'
-                    },
-                    yaxis: {
-                        ...plotlyLayoutConfig.yaxis, 
-                        title: 'Insolation Flux (Earth Units)',
-                        type: 'log'
-                    },
-                    shapes: [{
-                        type: 'rect',
-                        xref: 'x',
-                        yref: 'y',
-                        x0: Math.log10(175),
-                        x1: Math.log10(320),
-                        y0: Math.log10(0.32),
-                        y1: Math.log10(1.77),
-                        fillcolor: 'rgba(34,197,94,0.15)',
-                        line: {width: 2, color: 'rgba(34,197,94,0.4)', dash: 'dash'},
-                        layer: 'below'
-                    }],
-                    annotations: [{
-                        x: Math.log10(240),
-                        y: Math.log10(0.8),
-                        text: 'Habitable Zone',
-                        showarrow: false,
-                        font: {color: '#22c55e', size: 12}
-                    }]
-                };
-                
-                Plotly.newPlot('heatmap-plot', traces, layout, {responsive: true});
+                Plotly.newPlot('heatmap-plot', plotData.data, plotData.layout, {responsive: true});
             } catch (error) {
                 console.error('Heatmap error:', error);
                 document.getElementById('heatmap-plot').innerHTML = '<p class="text-red-400 text-center">Error loading heatmap visualization</p>';
             }
         }
-
+        
         // Planetary Profile Comparison (Server-side rendering)
         async function renderRadarComparisonPlot(data) {
             const candidates = data.filter(p => p.disposition === 1).slice(0, 50);
