@@ -4,6 +4,10 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import numpy as np
+import plotly.graph_objects as go
+import plotly.express as px
+from scipy.stats import gaussian_kde
+import json
 
 # --- 1. Initialize Flask App ---
 app = Flask(__name__)
@@ -170,6 +174,123 @@ def view_sample_data():
     except Exception as e:
         return jsonify({"error": f"An error occurred during sample data viewing: {str(e)}"}), 500
 
+@app.route('/heatmap_data', methods=['POST'])
+def get_heatmap_data():
+    """Generate heatmap data for temperature-insolation visualization"""
+    if model is None: 
+        return jsonify({"error": "Model is not loaded."}), 500
+    
+    try:
+        data = request.get_json()
+        predictions = data.get('predictions', [])
+        
+        # Extract temperature and insolation data, filtering out invalid values
+        valid_data = []
+        for p in predictions:
+            temp = p.get('equilibrium_temperature_k', 0)
+            flux = p.get('insolation_flux_earth_flux', 0)
+            if temp > 0 and flux > 0:  # Only valid positive values
+                valid_data.append({
+                    'temp': temp,
+                    'flux': flux,
+                    'habitable': p.get('habitable', 0),
+                    'disposition': p.get('disposition', 0)
+                })
+        
+        if not valid_data:
+            return jsonify({"error": "No valid temperature/flux data found"}), 400
+        
+        return jsonify({'data': valid_data})
+    except Exception as e:
+        return jsonify({"error": f"Heatmap generation error: {str(e)}"}), 500
+
+@app.route('/generate_radar', methods=['POST'])
+def generate_radar():
+    """Generate planetary profile radar chart server-side"""
+    try:
+        data = request.get_json()
+        predictions = data.get('predictions', [])
+        selected_indices = data.get('selected', [])
+        
+        df = pd.DataFrame(predictions)
+        candidates = df[df['disposition'] == 1].head(50)
+        
+        features = [
+            "equilibrium_temperature_k",
+            "planetary_radius_earth_radii",
+            "insolation_flux_earth_flux",
+            "stellar_effective_temperature_k",
+            "stellar_radius_solar_radii",
+            "orbital_period_days"
+        ]
+        
+        feature_labels = [
+            'Equilibrium Temp',
+            'Planetary Radius',
+            'Insolation Flux',
+            'Stellar Temp',
+            'Stellar Radius',
+            'Orbital Period'
+        ]
+        
+        earth_vals = {
+            "equilibrium_temperature_k": 288,
+            "planetary_radius_earth_radii": 1,
+            "insolation_flux_earth_flux": 1,
+            "stellar_effective_temperature_k": 5778,
+            "stellar_radius_solar_radii": 1,
+            "orbital_period_days": 365.25
+        }
+        
+        fig = go.Figure()
+        
+        # Earth baseline
+        fig.add_trace(go.Scatterpolar(
+            r=[1]*len(features),
+            theta=feature_labels,
+            fill='toself',
+            name='Earth',
+            line_color='green',
+            fillcolor='rgba(34,197,94,0.2)',
+            opacity=0.8
+        ))
+        
+        # Add selected planets
+        colors = ['dodgerblue', 'orange', 'deeppink', 'gold', 'cyan']
+        for i, idx in enumerate(selected_indices):
+            if idx < len(candidates):
+                row = candidates.iloc[idx]
+                r_vals = [min(row[f] / earth_vals[f], 3) for f in features]
+                planet_name = row.get('planet_name', f'Planet {idx}')
+                
+                fig.add_trace(go.Scatterpolar(
+                    r=r_vals,
+                    theta=feature_labels,
+                    fill='toself',
+                    name=str(planet_name),
+                    line_color=colors[i % len(colors)],
+                    opacity=0.6
+                ))
+        
+        fig.update_layout(
+            title="Planetary Profiles - Normalized to Earth",
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, 3]),
+                bgcolor='rgba(0,0,0,0)'
+            ),
+            showlegend=True,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#e0e0e0', family='Space Grotesk'),
+            autosize=True,
+            height=480,
+            margin=dict(l=80, r=80, t=80, b=80)
+        )
+        
+        return jsonify(json.loads(fig.to_json()))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+      
 # --- 7. Run the App ---
 if __name__ == '__main__':
     print("🚀 Flask server is starting...")
