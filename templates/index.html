@@ -11,7 +11,7 @@
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
     <style>
         body {
-            font-family: 'Space+Grotesk', sans-serif;
+            font-family: 'Space Grotesk', sans-serif;
             background-color: #0a0a1a;
             color: #e0e0e0;
             background-image: linear-gradient(rgba(10, 10, 26, 0.85), rgba(10, 10, 26, 0.95)), url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&w=2111&auto=format&fit=crop');
@@ -104,23 +104,27 @@
         <div class="section-fade-in w-full max-w-7xl mx-auto">
             <h2 class="text-4xl font-bold text-center mb-12">Exoplanet Analysis Dashboard</h2>
             
-            <!-- Analysis Summary Card -->
+            <!-- Analysis Summary Card - UPDATED -->
             <div id="summary-card" class="card p-6 rounded-lg mb-8">
                 <h3 class="text-2xl font-bold mb-4 text-white">Analysis Summary</h3>
-                <div class="grid md:grid-cols-2 gap-6 text-center">
+                <div class="grid md:grid-cols-3 gap-6 text-center">
                     <div>
                         <p id="rows-processed" class="text-4xl md:text-5xl font-bold text-indigo-400">0</p>
-                        <p class="text-gray-400">Rows Processed</p>
+                        <p class="text-gray-400">Total Planets</p>
                     </div>
                     <div>
-                        <p id="candidates-found" class="text-4xl md:text-5xl font-bold text-green-400">0</p>
-                        <p class="text-gray-400">Potential Candidates Found</p>
+                        <p id="candidates-found" class="text-4xl md:text-5xl font-bold text-yellow-400">0</p>
+                        <p class="text-gray-400">Candidates Found</p>
+                    </div>
+                    <div>
+                        <p id="habitable-found" class="text-4xl md:text-5xl font-bold text-green-400">0</p>
+                        <p class="text-gray-400">Potentially Habitable</p>
                     </div>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div class="plot-container lg:col-span-2"><h3 class="text-xl font-bold mb-1 text-white">1. Goldilocks Zone Plot</h3><p class="text-sm text-gray-400 mb-4">Shows if a planet is in the habitable zone where liquid water could exist. The green band represents the "just right" temperature range.</p><div id="goldilocks-plot" class="chart-area"></div></div>
+                <div class="plot-container lg:col-span-2"><h3 class="text-xl font-bold mb-1 text-white">1. Goldilocks Zone Plot</h3><p class="text-sm text-gray-400 mb-4">Shows if a planet is in the habitable zone where liquid water could exist. Green = habitable, Yellow = candidate but not habitable, Red = not a candidate.</p><div id="goldilocks-plot" class="chart-area"></div></div>
                 <div class="plot-container"><h3 class="text-xl font-bold mb-1 text-white">2. Orbit Map</h3><p class="text-sm text-gray-400 mb-4">Visualizes planets' orbits around their star. Distance from center is based on orbital period.</p><div id="orbit-plot" class="chart-area"></div></div>
                 <div class="plot-container"><h3 class="text-xl font-bold mb-1 text-white">3. Feature Importance</h3><p class="text-sm text-gray-400 mb-4">Reveals which factors the model considers most important for predicting habitability. (Illustrative)</p><div id="feature-importance-plot" class="chart-area"></div></div>
                 <div class="plot-container"><h3 class="text-xl font-bold mb-1 text-white">4. Planetary Profile (Radar Chart)</h3><p class="text-sm text-gray-400 mb-4">Compares a candidate planet's key features to Earth's profile. (Illustrative comparison)</p><div id="radar-plot" class="chart-area"></div></div>
@@ -205,8 +209,13 @@
                 const jsonString = await response.json();
                 fullDataset = JSON.parse(jsonString);
                 
+                // UPDATED: Extract habitable count
+                const candidatesCount = fullDataset.filter(p => p.disposition === 1).length;
+                const habitableCount = fullDataset.filter(p => p.habitable === 1).length;
+                
                 document.getElementById('rows-processed').textContent = fullDataset.length;
-                document.getElementById('candidates-found').textContent = fullDataset.filter(p => p.disposition === 1).length;
+                document.getElementById('candidates-found').textContent = candidatesCount;
+                document.getElementById('habitable-found').textContent = habitableCount;
 
                 const headers = Object.keys(fullDataset[0]);
                 populateExplorerDropdowns(headers);
@@ -257,16 +266,77 @@
         modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
         function renderAllVisualizations(data) { renderGoldilocksPlot(data); renderOrbitPlot(data); renderFeatureImportancePlot(); renderRadarPlot(); renderShapPlot(); renderGalacticMapPlot(data); }
-        function renderGoldilocksPlot(data) { const h = data.filter(p=>p.disposition===1), n=data.filter(p=>p.disposition===0); const t1={x:h.map(p=>p.stellar_effective_temperature_k),y:h.map(p=>p.insolation_flux_earth_flux),mode:'markers',name:'Habitable',marker:{color:'#22c55e',size:5,opacity:0.7}}, t2={x:n.map(p=>p.stellar_effective_temperature_k),y:n.map(p=>p.insolation_flux_earth_flux),mode:'markers',name:'Non-Habitable',marker:{color:'#ef4444',size:5,opacity:0.7}}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'Stellar Temperature vs. Insolation Flux'},xaxis:{...plotlyLayoutConfig.xaxis,title:'Stellar Effective Temperature (K)',autorange:'reversed'},yaxis:{...plotlyLayoutConfig.yaxis,title:'Insolation Flux (Earth Units)',type:'log'},shapes:[{type:'rect',xref:'x',yref:'paper',x0:4000,x1:6000,y0:0,y1:1,fillcolor:'rgba(34,197,94,0.2)',line:{width:0}}]}; Plotly.newPlot('goldilocks-plot', [t1, t2], l, {responsive: true});}
-        function renderOrbitPlot(data) { const s=data.slice(0,20), t={r:s.map(p=>p.orbital_period_days),theta:Array.from({length:20},(_,i)=>i*(360/20)),mode:'markers',marker:{color:s.map(p=>p.disposition===1?'#22c55e':'#ef4444'),size:s.map(p=>Math.max(p.planetary_radius_earth_radii,3)*2),opacity:0.8,line:{color:'white',width:1}},type:'scatterpolar'}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'Planet Orbits (sized by radius)'},polar:{bgcolor:'rgba(0,0,0,0)',angularaxis:{visible:false},radialaxis:{gridcolor:'rgba(255,255,255,0.1)'}}}; Plotly.newPlot('orbit-plot',[t],l,{responsive: true});}
+        
+        // UPDATED: New Goldilocks plot with 3 categories
+        function renderGoldilocksPlot(data) { 
+            const habitable = data.filter(p => p.habitable === 1);
+            const candidateNotHabitable = data.filter(p => p.disposition === 1 && p.habitable === 0);
+            const notCandidate = data.filter(p => p.disposition === 0);
+            
+            const t1 = {
+                x: habitable.map(p => p.stellar_effective_temperature_k),
+                y: habitable.map(p => p.insolation_flux_earth_flux),
+                mode: 'markers',
+                name: 'Habitable',
+                marker: { color: '#22c55e', size: 8, opacity: 0.8, line: { width: 1, color: 'white' } }
+            };
+            
+            const t2 = {
+                x: candidateNotHabitable.map(p => p.stellar_effective_temperature_k),
+                y: candidateNotHabitable.map(p => p.insolation_flux_earth_flux),
+                mode: 'markers',
+                name: 'Candidate (Not Habitable)',
+                marker: { color: '#eab308', size: 6, opacity: 0.7 }
+            };
+            
+            const t3 = {
+                x: notCandidate.map(p => p.stellar_effective_temperature_k),
+                y: notCandidate.map(p => p.insolation_flux_earth_flux),
+                mode: 'markers',
+                name: 'Not a Candidate',
+                marker: { color: '#ef4444', size: 4, opacity: 0.5 }
+            };
+            
+            const layout = {
+                ...plotlyLayoutConfig,
+                title: { ...plotlyLayoutConfig.title, text: 'Goldilocks Zone: Habitability Analysis' },
+                xaxis: { ...plotlyLayoutConfig.xaxis, title: 'Stellar Effective Temperature (K)' },
+                yaxis: { ...plotlyLayoutConfig.yaxis, title: 'Insolation Flux (Earth Units)', type: 'log' },
+                shapes: [{
+                    type: 'rect',
+                    xref: 'x',
+                    yref: 'y',
+                    x0: 3000,
+                    x1: 7000,
+                    y0: 0.32,
+                    y1: 1.77,
+                    fillcolor: 'rgba(34,197,94,0.15)',
+                    line: { width: 2, color: 'rgba(34,197,94,0.5)', dash: 'dash' }
+                }],
+                annotations: [{
+                    x: 5000,
+                    y: 1,
+                    text: 'Goldilocks Zone',
+                    showarrow: false,
+                    font: { color: '#22c55e', size: 14 }
+                }]
+            };
+            
+            Plotly.newPlot('goldilocks-plot', [t1, t2, t3], layout, { responsive: true });
+        }
+        
+        // UPDATED: Orbit plot with 3 colors
+        function renderOrbitPlot(data) { 
+            const s=data.slice(0,20), t={r:s.map(p=>p.orbital_period_days),theta:Array.from({length:20},(_,i)=>i*(360/20)),mode:'markers',marker:{color:s.map(p=>p.habitable===1?'#22c55e':(p.disposition===1?'#eab308':'#ef4444')),size:s.map(p=>Math.max(p.planetary_radius_earth_radii,3)*2),opacity:0.8,line:{color:'white',width:1}},type:'scatterpolar'}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'Planet Orbits (sized by radius)'},polar:{bgcolor:'rgba(0,0,0,0)',angularaxis:{visible:false},radialaxis:{gridcolor:'rgba(255,255,255,0.1)'}}}; Plotly.newPlot('orbit-plot',[t],l,{responsive: true});
+        }
+        
         function renderFeatureImportancePlot() { const f=['Insolation Flux','Planetary Radius','Transit Depth','Stellar Temp','Orbital Period'], i=[0.45,0.25,0.15,0.10,0.05]; const t={y:f,x:i,type:'bar',orientation:'h',marker:{color:'#4f46e5'}}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'Model Feature Importance'},yaxis:{...plotlyLayoutConfig.yaxis,automargin:true}}; Plotly.newPlot('feature-importance-plot',[t],l,{responsive: true});}
         function renderRadarPlot() { const f=['Radius','Temperature','Insolation','Gravity']; const t1={r:[1,1,1,1],theta:f,name:'Earth',fill:'toself',type:'scatterpolar',marker:{color:'rgba(59,130,246,0.7)'}}, t2={r:[1.8,1.2,1.5,1.3],theta:f,name:'Kepler-186f',fill:'toself',type:'scatterpolar',marker:{color:'rgba(34,197,94,0.7)'}}; const l={...plotlyLayoutConfig,polar:{radialaxis:{visible:true,range:[0,2]},bgcolor:'rgba(0,0,0,0)'},legend:{y:0,x:0.5,xanchor:'center'}}; Plotly.newPlot('radar-plot',[t1,t2],l,{responsive: true});}
         function renderShapPlot() { const f=['Insolation = 1.2','Radius = 1.1','Stellar Temp = 5800K','Transit Depth = low'], v=[0.35,0.25,-0.1,0.15]; const t={y:f,x:v,type:'bar',orientation:'h',marker:{color:v.map(v=>v>0?'#22c55e':'#ef4444')}}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'SHAP values for a "Habitable" Prediction'},yaxis:{...plotlyLayoutConfig.yaxis,automargin:true}}; Plotly.newPlot('shap-plot',[t],l,{responsive: true});}
-        function renderGalacticMapPlot(data) { const t={x:data.map(p=>p.right_ascension_decimal_degrees),y:data.map(p=>p.declination_decimal_degrees),mode:'markers',marker:{color:data.map(p=>p.disposition===1?'#22c55e':'#a5b4fc'),size:4,opacity:0.7}}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'Sky Distribution of Planets'},xaxis:{...plotlyLayoutConfig.xaxis,title:'Right Ascension (degrees)'},yaxis:{...plotlyLayoutConfig.yaxis,title:'Declination (degrees)'}}; Plotly.newPlot('galactic-map-plot',[t],l,{responsive: true});}
+        function renderGalacticMapPlot(data) { const t={x:data.map(p=>p.right_ascension_decimal_degrees),y:data.map(p=>p.declination_decimal_degrees),mode:'markers',marker:{color:data.map(p=>p.habitable===1?'#22c55e':(p.disposition===1?'#eab308':'#a5b4fc')),size:4,opacity:0.7}}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'Sky Distribution of Planets'},xaxis:{...plotlyLayoutConfig.xaxis,title:'Right Ascension (degrees)'},yaxis:{...plotlyLayoutConfig.yaxis,title:'Declination (degrees)'}}; Plotly.newPlot('galactic-map-plot',[t],l,{responsive: true});}
         const xSelect=document.getElementById('x-axis-select'), ySelect=document.getElementById('y-axis-select'); function populateExplorerDropdowns(fields){xSelect.innerHTML='';ySelect.innerHTML='';fields.forEach(f=>{const r=fullDataset[0]||{};if(typeof r[f]==='number'){const oX=document.createElement('option');oX.value=f;oX.textContent=f;xSelect.appendChild(oX);const oY=document.createElement('option');oY.value=f;oY.textContent=f;ySelect.appendChild(oY)}});xSelect.value='orbital_period_days';ySelect.value='planetary_radius_earth_radii';}
-        document.getElementById('plot-explorer-button').addEventListener('click',()=>{const xF=xSelect.value,yF=ySelect.value;const t={x:fullDataset.map(p=>p[xF]),y:fullDataset.map(p=>p[yF]),mode:'markers',marker:{color:fullDataset.map(p=>p.disposition===1?'#22c55e':'#ef4444'),size:5,opacity:0.6}};const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:`${yF} vs. ${xF}`},xaxis:{...plotlyLayoutConfig.xaxis,title:xF},yaxis:{...plotlyLayoutConfig.yaxis,title:yF}};Plotly.newPlot('explorer-plot',[t],l,{responsive: true});});
+        document.getElementById('plot-explorer-button').addEventListener('click',()=>{const xF=xSelect.value,yF=ySelect.value;const t={x:fullDataset.map(p=>p[xF]),y:fullDataset.map(p=>p[yF]),mode:'markers',marker:{color:fullDataset.map(p=>p.habitable===1?'#22c55e':(p.disposition===1?'#eab308':'#ef4444')),size:5,opacity:0.6}};const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:`${yF} vs. ${xF}`},xaxis:{...plotlyLayoutConfig.xaxis,title:xF},yaxis:{...plotlyLayoutConfig.yaxis,title:yF}};Plotly.newPlot('explorer-plot',[t],l,{responsive: true});});
     });
     </script>
 </body>
 </html>
-
