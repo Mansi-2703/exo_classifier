@@ -116,7 +116,13 @@ except Exception as e:
 # --- 5. Utility function to process data and predict ---
 def make_prediction(df):
     print("\n--- Prediction Pipeline Started ---")
+    print(f"Input data shape: {df.shape}")
+    print(f"Input columns: {df.columns.tolist()}")
+    
+    # Store ALL original columns
+    original_columns = df.columns.tolist()
     original_df = df.copy()
+    
     df_engineered = engineer_features(df.copy())
     df_for_prediction = pd.DataFrame()
 
@@ -129,16 +135,28 @@ def make_prediction(df):
     df_for_prediction = df_for_prediction[REQUIRED_FEATURES_BEFORE_SELECTION]
     df_for_prediction = df_for_prediction.fillna(0)
     
-    print(f"🤖 Making predictions on {len(df_for_prediction)} rows...")
+    print(f"Making predictions on {len(df_for_prediction)} rows...")
     predictions = model.predict(df_for_prediction)
     
-    original_df['disposition'] = predictions
+    # CRITICAL: Preserve ALL original columns including coordinates
+    result_df = original_df.copy()
+    result_df['disposition'] = predictions
     
     # Apply habitability classification
-    original_df = apply_habitability_classification(original_df)
+    result_df = apply_habitability_classification(result_df)
     
-    print("✅ Predictions complete.")
-    return original_df.to_json(orient='records')
+    candidates_count = (result_df['disposition'] == 1).sum()
+    habitable_count = (result_df['habitable'] == 1).sum()
+    
+    print(f"Predictions complete: {candidates_count} candidates, {habitable_count} habitable")
+    print(f"Output columns: {result_df.columns.tolist()}")
+    
+    # Verify coordinates are present
+    if 'right_ascension_decimal_degrees' in result_df.columns:
+        coord_count = result_df['right_ascension_decimal_degrees'].notna().sum()
+        print(f"Rows with valid RA coordinates: {coord_count}")
+    
+    return result_df.to_json(orient='records')
 
 # --- 6. Prediction Endpoints ---
 @app.route('/predict', methods=['POST'])
@@ -330,6 +348,182 @@ def generate_radar():
         
         return jsonify(json.loads(fig.to_json()))
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+        
+@app.route('/generate_galactic_map', methods=['POST'])
+def generate_galactic_map():
+    """Generate galactic map for CANDIDATES ONLY"""
+    try:
+        data = request.get_json()
+        predictions = data.get('predictions', [])
+        df = pd.DataFrame(predictions)
+        
+        print(f"\n=== GALACTIC MAP (CANDIDATES ONLY) ===")
+        print(f"Total planets received: {len(df)}")
+        
+        # FILTER FOR CANDIDATES ONLY
+        if 'disposition' not in df.columns:
+            return jsonify({"error": "Missing 'disposition' column"}), 400
+        
+        df = df[df['disposition'] == 1].copy()
+        print(f"Candidates (disposition==1): {len(df)}")
+        
+        if len(df) == 0:
+            return jsonify({"error": "No candidates found. The model predicted 0 planets as candidates."}), 400
+        
+        # Check required columns
+        required = ['right_ascension_decimal_degrees', 'declination_decimal_degrees', 
+                   'equilibrium_temperature_k', 'planetary_radius_earth_radii']
+        
+        missing = [col for col in required if col not in df.columns]
+        if missing:
+            print(f"Missing columns: {missing}")
+            return jsonify({"error": f"Missing columns: {missing}"}), 400
+        
+        # Drop NaN values
+        df = df.dropna(subset=required).copy()
+        print(f"Candidates with valid data: {len(df)}")
+        
+        if len(df) == 0:
+            return jsonify({"error": "No candidates have valid coordinate data"}), 400
+        
+        # Classification function
+        def classify_habitability(row):
+            temp = row['equilibrium_temperature_k']
+            radius = row['planetary_radius_earth_radii']
+            
+            if 0.8 <= radius <= 1.5 and 240 <= temp <= 320:
+                return "Habitable Zone"
+            elif temp > 320:
+                return "Hot Zone"
+            else:
+                return "Cold Zone"
+        
+        df['habitability'] = df.apply(classify_habitability, axis=1)
+        
+        # Sample if too many
+        sample_df = df.sample(n=3000, random_state=42) if len(df) > 3000 else df.copy()
+        
+        # Planet names
+        if 'planet_name' not in sample_df.columns:
+            sample_df['planet_name'] = ['Planet ' + str(i) for i in range(len(sample_df))]
+        else:
+            sample_df['planet_name'] = sample_df['planet_name'].fillna('Unknown')
+        
+        zone_counts = sample_df['habitability'].value_counts()
+        print(f"Plotting {len(sample_df)} candidate planets:")
+        print(f"  Cold: {zone_counts.get('Cold Zone', 0)}")
+        print(f"  Habitable: {zone_counts.get('Habitable Zone', 0)}")
+        print(f"  Hot: {zone_counts.get('Hot Zone', 0)}")
+        
+        # Create traces
+        traces = []
+        
+        # Cold Zone
+        cold_df = sample_df[sample_df['habitability'] == "Cold Zone"]
+        if len(cold_df) > 0:
+            traces.append({
+                'type': 'scattergl',
+                'x': cold_df['right_ascension_decimal_degrees'].tolist(),
+                'y': cold_df['declination_decimal_degrees'].tolist(),
+                'mode': 'markers',
+                'name': 'Cold Zone',
+                'marker': {
+                    'size': 4,
+                    'color': 'lightblue',
+                    'opacity': 0.3
+                },
+                'text': [f"Planet: {name}<br>Temp: {temp} K" 
+                        for name, temp in zip(cold_df['planet_name'], cold_df['equilibrium_temperature_k'])],
+                'hoverinfo': 'text'
+            })
+        
+        # Habitable Zone
+        hab_df = sample_df[sample_df['habitability'] == "Habitable Zone"]
+        if len(hab_df) > 0:
+            traces.append({
+                'type': 'scattergl',
+                'x': hab_df['right_ascension_decimal_degrees'].tolist(),
+                'y': hab_df['declination_decimal_degrees'].tolist(),
+                'mode': 'markers',
+                'name': 'Habitable Zone',
+                'marker': {
+                    'size': 14,
+                    'color': 'gold',
+                    'line': {'width': 2, 'color': 'white'},
+                    'opacity': 0.95
+                },
+                'text': [f"<b>{name}</b><br>Radius: {rad} R⊕<br>Temp: {temp} K" 
+                        for name, rad, temp in zip(hab_df['planet_name'], 
+                                                   hab_df['planetary_radius_earth_radii'], 
+                                                   hab_df['equilibrium_temperature_k'])],
+                'hoverinfo': 'text'
+            })
+        
+        # Hot Zone
+        hot_df = sample_df[sample_df['habitability'] == "Hot Zone"]
+        if len(hot_df) > 0:
+            traces.append({
+                'type': 'scattergl',
+                'x': hot_df['right_ascension_decimal_degrees'].tolist(),
+                'y': hot_df['declination_decimal_degrees'].tolist(),
+                'mode': 'markers',
+                'name': 'Hot Zone',
+                'marker': {
+                    'size': 4,
+                    'color': 'orangered',
+                    'opacity': 0.3
+                },
+                'text': [f"Planet: {name}<br>Temp: {temp} K" 
+                        for name, temp in zip(hot_df['planet_name'], hot_df['equilibrium_temperature_k'])],
+                'hoverinfo': 'text'
+            })
+        
+        # Layout with shapes
+        layout = {
+            'title': 'Galactic Exoplanet Map with Habitability Zones (Candidates Only)',
+            'template': 'plotly_dark',
+            'width': 1200,
+            'height': 700,
+            'paper_bgcolor': 'black',
+            'plot_bgcolor': 'black',
+            'xaxis': {
+                'title': 'Right Ascension (°)',
+                'showgrid': False,
+                'zeroline': False,
+                'range': [360, 0]
+            },
+            'yaxis': {
+                'title': 'Declination (°)',
+                'showgrid': False,
+                'zeroline': False,
+                'range': [-90, 90]
+            },
+            'legend': {
+                'title': {'text': 'Temperature Zones'},
+                'bgcolor': 'rgba(0,0,0,0.4)'
+            },
+            'dragmode': 'pan',
+            'autosize': True,
+            'shapes': [
+                {'type': 'rect', 'xref': 'paper', 'yref': 'y', 'x0': 0, 'x1': 1, 
+                 'y0': -90, 'y1': -30, 'fillcolor': 'lightblue', 'opacity': 0.08, 
+                 'line_width': 0, 'layer': 'below'},
+                {'type': 'rect', 'xref': 'paper', 'yref': 'y', 'x0': 0, 'x1': 1, 
+                 'y0': -30, 'y1': 30, 'fillcolor': 'gold', 'opacity': 0.08, 
+                 'line_width': 0, 'layer': 'below'},
+                {'type': 'rect', 'xref': 'paper', 'yref': 'y', 'x0': 0, 'x1': 1, 
+                 'y0': 30, 'y1': 90, 'fillcolor': 'orangered', 'opacity': 0.08, 
+                 'line_width': 0, 'layer': 'below'}
+            ]
+        }
+        
+        print(f"SUCCESS: Returning {len(traces)} traces for candidates only")
+        return jsonify({'data': traces, 'layout': layout})
+        
+    except Exception as e:
+        import traceback
+        print(f"ERROR:\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
       
 # --- 7. Run the App ---

@@ -131,7 +131,7 @@
                 <div class="plot-container"><h3 class="text-xl font-bold mb-1 text-white">5. Feature Importance</h3><p class="text-sm text-gray-400 mb-4">Reveals which factors the model considers most important for predicting habitability. (Illustrative)</p><div id="feature-importance-plot" class="chart-area"></div></div>
                 <div class="plot-container"><h3 class="text-xl font-bold mb-1 text-white">6. Planetary Profile (Radar Chart)</h3><p class="text-sm text-gray-400 mb-4">Compares a candidate planet's key features to Earth's profile. (Illustrative comparison)</p><div id="radar-plot" class="chart-area"></div></div>
                 <div class="plot-container"><h3 class="text-xl font-bold mb-1 text-white">7. Prediction Explainability (SHAP)</h3><p class="text-sm text-gray-400 mb-4">Explains *why* the model made a specific prediction for a sample planet. (Illustrative)</p><div id="shap-plot" class="chart-area"></div></div>
-                <div class="plot-container lg:col-span-2"><h3 class="text-xl font-bold mb-1 text-white">8. Bonus: Galactic Map</h3><p class="text-sm text-gray-400 mb-4">Plots the position of the exoplanets in the sky based on their celestial coordinates (Right Ascension & Declination).</p><div id="galactic-map-plot" class="chart-area"></div></div>
+                <div class="plot-container lg:col-span-2"><h3 class="text-xl font-bold mb-1 text-white">8. Galactic Map with Habitability Zones</h3><p class="text-sm text-gray-400 mb-4">Sky distribution of CANDIDATE planets colored by temperature zones. Gold = Habitable, Blue = Cold, Red = Hot.</p><div id="galactic-map-plot" class="chart-area"></div></div>
                 <div class="plot-container lg:col-span-2"><h3 class="text-xl font-bold mb-1 text-white">9. Feature Pair Explorer</h3><p class="text-sm text-gray-400 mb-4">Select any two features from the dataset to create a custom scatter plot and discover relationships.</p><div class="flex flex-wrap gap-4 mb-4"><div class="flex-grow"><label for="x-axis-select" class="block text-sm font-medium text-gray-300">X-Axis</label><select id="x-axis-select" class="mt-1 block w-full bg-gray-800 border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select></div><div class="flex-grow"><label for="y-axis-select" class="block text-sm font-medium text-gray-300">Y-Axis</label><select id="y-axis-select" class="mt-1 block w-full bg-gray-800 border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select></div><button id="plot-explorer-button" class="btn bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-md self-end">Plot</button></div><div id="explorer-plot" class="chart-area"></div></div>
             </div>
         </div>
@@ -363,7 +363,7 @@
                 document.getElementById('heatmap-plot').innerHTML = '<p class="text-red-400 text-center">Error loading heatmap visualization</p>';
             }
         }
-        
+
         // Planetary Profile Comparison (Server-side rendering)
         async function renderRadarComparisonPlot(data) {
             const candidates = data.filter(p => p.disposition === 1).slice(0, 50);
@@ -440,7 +440,42 @@
         function renderFeatureImportancePlot() { const f=['Insolation Flux','Planetary Radius','Transit Depth','Stellar Temp','Orbital Period'], i=[0.45,0.25,0.15,0.10,0.05]; const t={y:f,x:i,type:'bar',orientation:'h',marker:{color:'#4f46e5'}}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'Model Feature Importance'},yaxis:{...plotlyLayoutConfig.yaxis,automargin:true}}; Plotly.newPlot('feature-importance-plot',[t],l,{responsive: true});}
         function renderRadarPlot() { const f=['Radius','Temperature','Insolation','Gravity']; const t1={r:[1,1,1,1],theta:f,name:'Earth',fill:'toself',type:'scatterpolar',marker:{color:'rgba(59,130,246,0.7)'}}, t2={r:[1.8,1.2,1.5,1.3],theta:f,name:'Kepler-186f',fill:'toself',type:'scatterpolar',marker:{color:'rgba(34,197,94,0.7)'}}; const l={...plotlyLayoutConfig,polar:{radialaxis:{visible:true,range:[0,2]},bgcolor:'rgba(0,0,0,0)'},legend:{y:0,x:0.5,xanchor:'center'}}; Plotly.newPlot('radar-plot',[t1,t2],l,{responsive: true});}
         function renderShapPlot() { const f=['Insolation = 1.2','Radius = 1.1','Stellar Temp = 5800K','Transit Depth = low'], v=[0.35,0.25,-0.1,0.15]; const t={y:f,x:v,type:'bar',orientation:'h',marker:{color:v.map(v=>v>0?'#22c55e':'#ef4444')}}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'SHAP values for a "Habitable" Prediction'},yaxis:{...plotlyLayoutConfig.yaxis,automargin:true}}; Plotly.newPlot('shap-plot',[t],l,{responsive: true});}
-        function renderGalacticMapPlot(data) { const t={x:data.map(p=>p.right_ascension_decimal_degrees),y:data.map(p=>p.declination_decimal_degrees),mode:'markers',marker:{color:data.map(p=>p.habitable===1?'#22c55e':(p.disposition===1?'#eab308':'#a5b4fc')),size:4,opacity:0.7}}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'Sky Distribution of Planets'},xaxis:{...plotlyLayoutConfig.xaxis,title:'Right Ascension (degrees)'},yaxis:{...plotlyLayoutConfig.yaxis,title:'Declination (degrees)'}}; Plotly.newPlot('galactic-map-plot',[t],l,{responsive: true});}
+        async function renderGalacticMapPlot(data) {
+            const container = document.getElementById('galactic-map-plot');
+            
+            try {
+                console.log('Generating galactic map for', data.length, 'planets');
+                
+                const response = await fetch(`${API_URL}/generate_galactic_map`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({predictions: data})
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                }
+                
+                const plotData = await response.json();
+                
+                if (plotData.error) {
+                    throw new Error(plotData.error);
+                }
+                
+                console.log('Galactic map data received');
+                
+                await Plotly.newPlot('galactic-map-plot', plotData.data, plotData.layout, {responsive: true});
+                console.log('Galactic map rendered successfully');
+                
+            } catch (error) {
+                console.error('Galactic map error:', error);
+                container.innerHTML = `<div class="text-center p-8">
+                    <p class="text-red-400 mb-2">Error loading galactic map</p>
+                    <p class="text-gray-500 text-sm">${error.message}</p>
+                </div>`;
+            }
+        }
         const xSelect=document.getElementById('x-axis-select'), ySelect=document.getElementById('y-axis-select'); function populateExplorerDropdowns(fields){xSelect.innerHTML='';ySelect.innerHTML='';fields.forEach(f=>{const r=fullDataset[0]||{};if(typeof r[f]==='number'){const oX=document.createElement('option');oX.value=f;oX.textContent=f;xSelect.appendChild(oX);const oY=document.createElement('option');oY.value=f;oY.textContent=f;ySelect.appendChild(oY)}});xSelect.value='orbital_period_days';ySelect.value='planetary_radius_earth_radii';}
         document.getElementById('plot-explorer-button').addEventListener('click',()=>{const xF=xSelect.value,yF=ySelect.value;const t={x:fullDataset.map(p=>p[xF]),y:fullDataset.map(p=>p[yF]),mode:'markers',marker:{color:fullDataset.map(p=>p.habitable===1?'#22c55e':(p.disposition===1?'#eab308':'#ef4444')),size:5,opacity:0.6}};const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:`${yF} vs. ${xF}`},xaxis:{...plotlyLayoutConfig.xaxis,title:xF},yaxis:{...plotlyLayoutConfig.yaxis,title:yF}};Plotly.newPlot('explorer-plot',[t],l,{responsive: true});});
     });
