@@ -1,7 +1,3 @@
-Steps to execute:
-pip install -r requirements.txt
-python app.py
-
 Overview
 This project presents an AI/ML-powered system designed to automatically identify and analyze exoplanets from NASA’s open datasets. Using data from the Kepler and TESS missions, our model classifies celestial objects as habitable or non-habitable while providing insightful visualizations through an interactive web interface.
 
@@ -67,3 +63,7 @@ D. Machine Learning Libraries: Scikit-learn was used for model training, evaluat
 E. Visualization Tools: Visualization components were created with Plotly, Seaborn, Matplotlib, and SHAP, enabling dynamic and explanatory charts within the web app.
 F. Deployment: The system is deployed using Render, which serves the Flask app in a production environment, ensuring performance and reliability.
 G. Version Control: Git and GitHub were used for collaborative development, version tracking, and repository management throughout the hackathon.
+
+Steps to execute:
+pip install -r requirements.txt
+python app.py
