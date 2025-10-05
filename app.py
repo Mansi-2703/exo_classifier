@@ -1,6 +1,6 @@
 import pickle
 import pandas as pd
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import os
 import numpy as np
@@ -525,6 +525,11 @@ def generate_galactic_map():
         import traceback
         print(f"ERROR:\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/')
+def serve_frontend():
+    """Serve the HTML frontend"""
+    return render_template('index.html')
       
 # --- 7. Run the App ---
 if __name__ == '__main__':
