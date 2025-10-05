@@ -26,8 +26,34 @@
         .card { background-color: rgba(26, 26, 58, 0.7); backdrop-filter: blur(10px); border: 1px solid #2a2a4a; transition: all 0.3s ease; }
         .card:hover { transform: translateY(-5px); border-color: #4f46e5; }
         
-        .plot-container { display: flex; flex-direction: column; background-color: rgba(26, 26, 58, 0.7); backdrop-filter: blur(10px); border: 1px solid #2a2a4a; border-radius: 0.5rem; padding: 1.5rem; min-height: 480px; }
-        .chart-area { flex-grow: 1; min-height: 0; }
+        .plot-container { 
+            display: flex; 
+            flex-direction: column; 
+            background-color: rgba(26, 26, 58, 0.7); 
+            backdrop-filter: blur(10px); 
+            border: 1px solid #2a2a4a; 
+            border-radius: 0.5rem; 
+            padding: 1.5rem; 
+            min-height: 480px;
+            overflow: hidden;
+            box-sizing: border-box;
+            width: 100%;
+        }
+
+        .chart-area { 
+            flex-grow: 1; 
+            min-height: 0;
+            width: 100%;
+            max-width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
         
         #drop-zone { border: 2px dashed #3a3a5a; transition: all 0.3s ease; }
         #drop-zone.dragover { background-color: #1a1a3a; border-color: #4f46e5; }
@@ -121,6 +147,11 @@
                         <p class="text-gray-400">Potentially Habitable</p>
                     </div>
                 </div>
+                <div class="mt-6 text-center">
+                    <button id="download-results-button" class="btn bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-full">
+                        Download Results as CSV
+                    </button>
+                </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -155,11 +186,23 @@
     </footer>
 
     <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        let fullDataset = [];
-        const API_URL = 'https://exo-classifier.onrender.com';
-        const plotlyLayoutConfig = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#e0e0e0', family: 'Space Grotesk' }, margin: { l: 60, r: 30, t: 70, b: 60 }, xaxis: { gridcolor: 'rgba(255,255,255,0.1)', linecolor: 'rgba(255,255,255,0.2)', zerolinecolor: 'rgba(255,255,255,0.2)' }, yaxis: { gridcolor: 'rgba(255,255,255,0.1)', linecolor: 'rgba(255,255,255,0.2)', zerolinecolor: 'rgba(255,255,255,0.2)' }, legend: { x: 1, xanchor: 'right', y: 1 }, title: { x: 0.05, xanchor: 'left', pad: { t: 20 } } };
+    let fullDataset = [];
+    const API_URL = 'https://exo-classifier.onrender.com';
+    // const API_URL = 'http://127.0.0.1:5000';
 
+    document.addEventListener('DOMContentLoaded', () => {
+        const plotlyLayoutConfig = { 
+            paper_bgcolor: 'rgba(0,0,0,0)', 
+            plot_bgcolor: 'rgba(0,0,0,0)', 
+            font: { color: '#e0e0e0', family: 'Space Grotesk' }, 
+            margin: { l: 60, r: 30, t: 70, b: 60 }, 
+            xaxis: { gridcolor: 'rgba(255,255,255,0.1)', linecolor: 'rgba(255,255,255,0.2)', zerolinecolor: 'rgba(255,255,255,0.2)' }, 
+            yaxis: { gridcolor: 'rgba(255,255,255,0.1)', linecolor: 'rgba(255,255,255,0.2)', zerolinecolor: 'rgba(255,255,255,0.2)' }, 
+            legend: { x: 0.98, xanchor: 'right', y: 1 }, 
+            title: { x: 0.05, xanchor: 'left', pad: { t: 20 } },
+            autosize: true,
+            width: null
+        };
         const observer = new IntersectionObserver((entries) => entries.forEach(entry => entry.isIntersecting && entry.target.classList.add('visible')), { threshold: 0.1 });
         document.querySelectorAll('.section-fade-in').forEach(el => observer.observe(el));
         
@@ -211,7 +254,6 @@
                 const jsonString = await response.json();
                 fullDataset = JSON.parse(jsonString);
                 
-                // UPDATED: Extract habitable count
                 const candidatesCount = fullDataset.filter(p => p.disposition === 1).length;
                 const habitableCount = fullDataset.filter(p => p.habitable === 1).length;
                 
@@ -221,14 +263,14 @@
 
                 const headers = Object.keys(fullDataset[0]);
                 populateExplorerDropdowns(headers);
-                renderAllVisualizations(fullDataset);
+                document.getElementById('results-section').classList.remove('hidden');
+                await renderAllVisualizations(fullDataset);
 
                 loadingOverlay.classList.remove('visible');
-                document.getElementById('results-section').classList.remove('hidden');
                 document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
             } catch (error) {
                 loadingOverlay.classList.remove('visible');
-                alert(`Analysis Failed: ${error.message}\n\nIs the Python backend server running? (Check the README)`);
+                alert(`Analysis Failed: ${error.message}\n\nIs the Python backend server running?`);
                 console.error("Fetch Error:", error);
             }
         }
@@ -267,7 +309,9 @@
         closeModalButton.addEventListener('click', closeModal);
         modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
-        function renderAllVisualizations(data) { 
+        async function renderAllVisualizations(data) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
             renderGoldilocksPlot(data); 
             renderHeatmapPlot(data); 
             renderRadarComparisonPlot(data); 
@@ -275,10 +319,17 @@
             renderFeatureImportancePlot(); 
             renderRadarPlot(); 
             renderShapPlot(); 
-            renderGalacticMapPlot(data); 
+            renderGalacticMapPlot(data);
+
+            setTimeout(() => {
+                document.querySelectorAll('.chart-area').forEach(chartDiv => {
+                    if(chartDiv.classList.contains('js-plotly-plot')) {
+                        Plotly.Plots.resize(chartDiv);
+                    }
+                });
+            }, 500);
         }
 
-        // UPDATED: New Goldilocks plot with 3 categories
         function renderGoldilocksPlot(data) { 
             const habitable = data.filter(p => p.habitable === 1);
             const candidateNotHabitable = data.filter(p => p.disposition === 1 && p.habitable === 0);
@@ -336,7 +387,6 @@
             Plotly.newPlot('goldilocks-plot', [t1, t2, t3], layout, { responsive: true });
         }
         
-       // Temperature-Insolation Heatmap (Proper KDE Heatmap)
         async function renderHeatmapPlot(data) {
             try {
                 const response = await fetch(`${API_URL}/heatmap_data`, {
@@ -350,7 +400,6 @@
                     throw new Error(plotData.error);
                 }
                 
-                // Ensure proper sizing
                 const container = document.getElementById('heatmap-plot');
                 const width = container.clientWidth;
                 
@@ -364,7 +413,6 @@
             }
         }
 
-        // Planetary Profile Comparison (Server-side rendering)
         async function renderRadarComparisonPlot(data) {
             const candidates = data.filter(p => p.disposition === 1).slice(0, 50);
             
@@ -373,7 +421,6 @@
                 return;
             }
             
-            // Populate dropdowns
             [1,2,3,4,5].forEach(i => {
                 const select = document.getElementById(`planet-select-${i}`);
                 select.innerHTML = '<option value="">None</option>';
@@ -385,13 +432,10 @@
                 });
             });
             
-            // Wait for container to be visible and properly sized
             await new Promise(resolve => setTimeout(resolve, 100));
             
-            // Initial render with Earth only
             await updateRadarChart([]);
             
-            // Add change listeners
             [1,2,3,4,5].forEach(i => {
                 document.getElementById(`planet-select-${i}`).addEventListener('change', async function() {
                     const selected = [1,2,3,4,5]
@@ -417,7 +461,6 @@
                 
                 if (plotData.error) throw new Error(plotData.error);
                 
-                // Ensure proper sizing
                 const container = document.getElementById('radar-comparison-plot');
                 const width = container.clientWidth;
                 const height = Math.max(container.clientHeight, 480);
@@ -432,7 +475,6 @@
             }
         }
 
-        // UPDATED: Orbit plot with 3 colors
         function renderOrbitPlot(data) { 
             const s=data.slice(0,20), t={r:s.map(p=>p.orbital_period_days),theta:Array.from({length:20},(_,i)=>i*(360/20)),mode:'markers',marker:{color:s.map(p=>p.habitable===1?'#22c55e':(p.disposition===1?'#eab308':'#ef4444')),size:s.map(p=>Math.max(p.planetary_radius_earth_radii,3)*2),opacity:0.8,line:{color:'white',width:1}},type:'scatterpolar'}; const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:'Planet Orbits (sized by radius)'},polar:{bgcolor:'rgba(0,0,0,0)',angularaxis:{visible:false},radialaxis:{gridcolor:'rgba(255,255,255,0.1)'}}}; Plotly.newPlot('orbit-plot',[t],l,{responsive: true});
         }
@@ -478,6 +520,70 @@
         }
         const xSelect=document.getElementById('x-axis-select'), ySelect=document.getElementById('y-axis-select'); function populateExplorerDropdowns(fields){xSelect.innerHTML='';ySelect.innerHTML='';fields.forEach(f=>{const r=fullDataset[0]||{};if(typeof r[f]==='number'){const oX=document.createElement('option');oX.value=f;oX.textContent=f;xSelect.appendChild(oX);const oY=document.createElement('option');oY.value=f;oY.textContent=f;ySelect.appendChild(oY)}});xSelect.value='orbital_period_days';ySelect.value='planetary_radius_earth_radii';}
         document.getElementById('plot-explorer-button').addEventListener('click',()=>{const xF=xSelect.value,yF=ySelect.value;const t={x:fullDataset.map(p=>p[xF]),y:fullDataset.map(p=>p[yF]),mode:'markers',marker:{color:fullDataset.map(p=>p.habitable===1?'#22c55e':(p.disposition===1?'#eab308':'#ef4444')),size:5,opacity:0.6}};const l={...plotlyLayoutConfig,title:{...plotlyLayoutConfig.title,text:`${yF} vs. ${xF}`},xaxis:{...plotlyLayoutConfig.xaxis,title:xF},yaxis:{...plotlyLayoutConfig.yaxis,title:yF}};Plotly.newPlot('explorer-plot',[t],l,{responsive: true});});
+        
+        // Download results functionality
+        const downloadButton = document.getElementById('download-results-button');
+
+        downloadButton.addEventListener('click', async () => {
+            if (fullDataset.length === 0) {
+                alert('No data available to download. Please run an analysis first.');
+                return;
+            }
+            
+            downloadButton.disabled = true;
+            downloadButton.textContent = 'Preparing download...';
+            
+            try {
+                console.log('Starting download for', fullDataset.length, 'rows');
+                
+                const response = await fetch(`${API_URL}/download_results`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ predictions: fullDataset })
+                });
+                
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Server error:', errorText);
+                    throw new Error(`Server returned ${response.status}: ${errorText}`);
+                }
+                
+                const blob = await response.blob();
+                console.log('Blob size:', blob.size, 'bytes');
+                
+                if (blob.size === 0) {
+                    throw new Error('Received empty file from server');
+                }
+                
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `exoplanet_results_${new Date().getTime()}.csv`;
+                
+                document.body.appendChild(a);
+                a.click();
+                
+                setTimeout(() => {
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                }, 100);
+                
+                console.log('Download completed successfully');
+                alert('Results downloaded successfully!');
+                
+            } catch (error) {
+                console.error('Download failed:', error);
+                alert(`Download failed: ${error.message}\n\nCheck the browser console for details.`);
+            } finally {
+                downloadButton.disabled = false;
+                downloadButton.textContent = 'Download Results as CSV';
+            }
+        });
     });
     </script>
 </body>

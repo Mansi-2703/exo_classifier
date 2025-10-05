@@ -1,6 +1,6 @@
 import pickle
 import pandas as pd
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 import os
 import numpy as np
@@ -530,7 +530,49 @@ def generate_galactic_map():
 def serve_frontend():
     """Serve the HTML frontend"""
     return render_template('index.html')
-      
+
+@app.route('/download_results', methods=['POST'])
+def download_results():
+    """Generate downloadable CSV with predictions"""
+    try:
+        import io
+        from flask import send_file
+        
+        data = request.get_json()
+        predictions = data.get('predictions', [])
+        
+        if not predictions:
+            return jsonify({"error": "No prediction data provided"}), 400
+        
+        # Create DataFrame
+        df = pd.DataFrame(predictions)
+        
+        # Remove internal columns if they exist
+        if 'disposition' in df.columns and 'habitable' in df.columns:
+            # Create human-readable columns
+            df['is_candidate'] = df['disposition'].apply(lambda x: 'Yes' if x == 1 else 'No')
+            df['is_potentially_habitable'] = df['habitable'].apply(lambda x: 'Yes' if x == 1 else 'No')
+            
+            # Drop the numeric columns
+            df = df.drop(columns=['disposition', 'habitable'])
+        
+        # Create in-memory file
+        output = io.BytesIO()
+        df.to_csv(output, index=False, encoding='utf-8')
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name='exoplanet_analysis_results.csv'
+        )
+        
+    except Exception as e:
+        import traceback
+        print(f"Download error: {traceback.format_exc()}")
+        return jsonify({"error": f"Download error: {str(e)}"}), 500
+         
 # --- 7. Run the App ---
 if __name__ == '__main__':
     print("🚀 Flask server is starting...")
