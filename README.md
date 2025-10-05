@@ -52,7 +52,7 @@ G. Galactic Map View: Projects discovered planets onto galactic coordinates (Rig
 A. Dataset Collection – Merged NASA’s Kepler and TESS datasets.
 B. Data Cleaning – Handled missing values, normalized and aligned key features.
 C. Feature Engineering – Prepared the data for machine learning.
-D. Model Training & Validation – Trained XGBoost and validated performance(70% accuracy).
+D. Model Training & Validation – Trained XGBoost and validated performance(86% accuracy).
 E. Integration & Deployment – Connected the model to a Flask backend and deployed with Gunicorn.
 
 5. Tech Stack Used
