@@ -1,3 +1,7 @@
+Steps to execute:
+pip install -r requirements.txt
+python app.py
+
 Overview
 This project presents an AI/ML-powered system designed to automatically identify and analyze exoplanets from NASA’s open datasets. Using data from the Kepler and TESS missions, our model classifies celestial objects as habitable or non-habitable while providing insightful visualizations through an interactive web interface.
 
